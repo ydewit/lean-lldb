@@ -90,7 +90,7 @@ def initialize_category(debugger, internal_dict):
 
 
 def attach_synthetic_to_type(synth_class, type_name, is_regex=False):
-    global module, CATEGORY
+    global MODULE, CATEGORY
     # log.debug('attaching synthetic %s to "%s", is_regex=%s', synth_class.__name__, type_name, is_regex)
     synth = lldb.SBTypeSynthetic.CreateWithClassName(__name__ + '.' + synth_class.__name__)
     synth.SetOptions(lldb.eTypeOptionCascade)
@@ -99,12 +99,12 @@ def attach_synthetic_to_type(synth_class, type_name, is_regex=False):
     def summary_fn(valobj, dict): return get_synth_summary(synth_class, valobj, dict)
     # LLDB accesses summary fn's by name, so we need to create a unique one.
     summary_fn.__name__ = '_get_synth_summary_' + synth_class.__name__
-    setattr(module, summary_fn.__name__, summary_fn)
+    setattr(MODULE, summary_fn.__name__, summary_fn)
     attach_summary_to_type(summary_fn, type_name, is_regex)
 
 
 def attach_summary_to_type(summary_fn, type_name, is_regex=False):
-    global module, CATEGORY
+    global MODULE, CATEGORY
     # log.debug('attaching summary %s to "%s", is_regex=%s', summary_fn.__name__, type_name, is_regex)
     summary = lldb.SBTypeSummary.CreateWithFunctionName(__name__ + '.' + summary_fn.__name__)
     summary.SetOptions(lldb.eTypeOptionCascade)
@@ -116,7 +116,7 @@ def attach_summary_to_type(summary_fn, type_name, is_regex=False):
 def get_synth_summary(synth_class, valobj, dict):
     try:
         obj_id = valobj.GetIndexOfChildWithName('$$object-id$$')
-        summary = LeanObjectLikeSynthProvider.synth_by_id[obj_id].get_summary()
+        summary = LeanObjectLikeSynthProvider._get_synth_by_id(obj_id).get_summary()
         return to_lldb_str(summary)
     except Exception as e:
         LOG.exception('%s', e)
@@ -202,29 +202,7 @@ def tuple_summary_provider(valobj, dict={}):
     return tuple_summary(valobj)
 
 
-# ----- Synth providers ------
-
-def is_scalar(o):
-    return o.unsigned & 1 == 1
-
-def box_scalar(n):
-    return lldb.SBValue.CreateValueFromExpression(None, None, '((lean_object*)(%s << 1 | 1))' % n)
-
-def unbox_scalar(o):
-    return o.unsigned >> 1
-
-def get_tag(o):
-    return o.GetChildMemberWithName('m_tag').unsigned
-
-def get_num_objs(o):
-    return o.GetChildMemberWithName('m_other').unsigned
-
-def get_rc(o):
-    return o.GetChildMemberWithName('m_rc').unsigned
-
-def get_ctor_obj(o, i):
-    return o.Cast(lldb.target.FindFirstType('lean_ctor_object').GetPointerType()).GetChildMemberWithName('m_objs').GetChildAtIndex(i)
-
+# ----- Lean Constants ------
 
 LEAN_MAX_CTOR_TAG = 244
 LEAN_CLOSURE = 245
@@ -242,17 +220,10 @@ LEAN_RESERVED = 255
 LEAN_MAX_CTOR_FIELDS = 256
 LEAN_MAX_CTOR_SCALARS_SIZE = 1024
 
-def call_function(name, returns, *args):
-    argStrs = [ ]
-    for arg in args:
-        if isinstance(arg, str):
-            argStrs.append('"%s"' % arg.replace('\\', '\\\\').replace('"', '\"'))
-        elif isinstance(arg, lldb.SBValue):
-            argStrs.append(arg.GetName())
-        else:
-            argStrs.append(repr(arg))
-    expr = '(%s) %s(%s)' % (returns, name, ', '.join(argStrs))
-    return lldb.SBValue.CreateValueFromExpression(None, None, expr)
+
+# ----- Synth providers ------
+
+
 
 # typedef struct {
 #     int      m_rc;
@@ -261,17 +232,55 @@ def call_function(name, returns, *args):
 #     unsigned m_tag:8;
 # } lean_object;
 class LeanObjectLikeSynthProvider(object):
-    synth_by_id = weakref.WeakValueDictionary()
-    next_id = 0
+    _synth_by_id = weakref.WeakValueDictionary()
+    _next_id = 0
 
+    def _get_synth_by_id(id):
+        return LeanObjectLikeSynthProvider._synth_by_id[id]
+    
+    def _get_tag(valobj):
+        return valobj.GetChildMemberWithName('m_tag').GetValueAsUnsigned()
+
+    def _is_scalar(valobj):
+        return valobj.GetValueAsUnsigned() & 1 == 1
+    
+    def _cast(valobj, type):
+        return valobj.Cast(valobj.GetTarget().FindFirstType(type))
+    
     def __init__(self, valobj, ptr_type = None, dict={}):
-        self.obj_id = type(self).next_id
+        self.obj_id = type(self)._next_id
         self.valobj = valobj
-        type(self).synth_by_id[self.obj_id] = self
-        type(self).next_id += 1
+        
+        type(self)._synth_by_id[self.obj_id] = self
+        type(self)._next_id += 1
 
-    def addr_size(self):
+    ## lean_object fields:
+
+    def get_tag(self): # unsigned
+        return type(self)._get_tag()
+    
+    def get_other(self): # unsigned
+        return self.valobj.GetChildMemberWithName('m_other').GetValueAsUnsigned()
+
+    def get_rc(self): # signed
+        return self.valobj.GetChildMemberWithName('m_rc').GetValueAsSigned()
+    
+    def get_cs_sz(self): # unsigned
+        return self.valobj.GetChildMemberWithName('m_cs_sz').GetValueAsUnsigned()
+
+    ## helpers
+
+    def cast(self, typename):
+        return type(self)._cast(self.valobj, typename)
+    
+    def is_scalar(self):
+        return type(self)._is_scalar(self.valobj)
+
+    def get_addr_size(self): # uint8_t
         return self.valobj.GetTarget().GetAddressByteSize()
+
+    def get_type(self): # SBType
+        return self.valobj.GetType()
 
     def _call(self, name, returns, *args):
         argStrs = [ ]
@@ -285,8 +294,10 @@ class LeanObjectLikeSynthProvider(object):
         expr = '(%s)%s(%s)' % (returns, name, ', '.join(argStrs))
         return self.valobj.CreateValueFromExpression(name, expr)
 
-    def size(self):
+    def get_byte_size(self):
         return self._call('lean_object_byte_size', 'size_t', self.valobj).GetValueAsUnsigned()
+
+    # SynthProvider interface
 
     def update(self):
         return True
@@ -303,6 +314,8 @@ class LeanObjectLikeSynthProvider(object):
     def get_child_index(self, name):
         if name == '$$object-id$$':
             return self.obj_id
+        if name.startswith('['):
+            return int(name.lstrip('[').rstrip(']'))
         return None
 
     def get_summary(self):
@@ -310,39 +323,69 @@ class LeanObjectLikeSynthProvider(object):
 
 
 class LeanBoxedScalarSynthProvider(LeanObjectLikeSynthProvider):
+    def box_scalar(valobj):
+        return valobj.box_scalar()
+    
+    def unbox_scalar(valobj):
+        return valobj.unbox_scalar()
+    
+    def box_scalar(self):
+        return self.valobj.CreateValueFromExpression(None, '((lean_object*)(%s << 1 | 1))' % self.valobj.GetValueAsUnsigned())
+
+    def unbox_scalar(self):
+        return self.valobj.GetValueAsUnsigned() >> 1
+
     def get_summary(self):
-        return "(boxed scalar size=%d) %d" % (unbox_scalar(self.valobj), self.size())
+        return "(boxed scalar size=%d) %d" % (self.get_byte_size(), self.unbox_scalar())
+
 
 # typedef struct {
 #     lean_object   m_header;
 #     lean_object * m_objs[0];
 # } lean_ctor_object;
-
 class LeanCtorSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_ctor_object').GetPointerType()), dict)
-        self.tag = get_tag(self.valobj)
-        self.rc = get_rc(self.valobj)
-        self.num_objs = get_num_objs(self.valobj)
-        # NOTE: ctor objects do not store scalar size, so we can't get it
-        # self.num_scalars = self.valobj.GetChildMemberWithName('m_cs_sz').unsigned(self.valobj)
+        super().__init__(type(self)._cast(valobj, 'lean_ctor_object*'), dict)
+
+    # boxed fields
+    def get_num_objs(self):
+        return self.get_other()
+
+    def get_objs(self):
+        return self.valobj.GetChildMemberWithName('m_objs')
+
+    # scalar fields: AFAIK, there is not enough runtime info to retrieve them!
+
+    # helpers
+    
+    def has_scalars(self):
+        return self.get_byte_size() - self.get_addr_size() - self.num_objs * self.get_addr_size() > 0
+
+    # SynthProvider interface
 
     def has_children(self):
-        if self.num_objs > 0:
+        if self.get_other() > 0:
             return True
         return False
     
-    def has_scalars(self):
-        return (self.size() - self.addr_size() - self.num_objs * self.addr_size()) > 0
-    
     def num_children(self):
-        return self.num_objs
+        return self.get_other()
     
     def get_child_at_index(self, index):
-        return get_ctor_obj(self.valobj, index)
+        return self.get_objs().GetChildAtIndex(index)
+
+        # return o.Cast(lldb.target.FindFirstType('lean_ctor_object').GetPointerType()).GetChildMemberWithName('m_objs').GetChildAtIndex(i)
+        # try:
+        #     if not 0 <= index < self.len:
+        #         return None
+        #     offset = index * self.addr_size()
+        #     return self.ptr.CreateChildAtOffset('[%s]' % index, offset, self.valobj.GetType())
+        # except Exception as e:
+        #     LOG.exception('%s', e)
+        #     raise
 
     def get_summary(self):
-        return "(Ctor#%u rc=%s num_objs=%u size=%s has_scalars=%s)" % (self.tag, str(self.rc) if self.rc != 0 else "∞", self.num_objs, self.size(), "true" if self.has_scalars() else "false")
+        return "(Ctor#%u rc=%s num_objs=%u size=%s has_scalars=%s)" % (self.get_tag(), str(self.get_rc()) if self.get_rc() != 0 else "∞", self.get_num_objs(), self.get_byte_size(), "true" if self.has_scalars() else "false")
 
 
 # typedef struct {
@@ -354,24 +397,37 @@ class LeanCtorSynthProvider(LeanObjectLikeSynthProvider):
 # } lean_closure_object;
 class LeanClosureSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_closure_object').GetPointerType()), dict)
-        self.fun = self.valobj.GetChildMemberWithName('m_fun')
-        self.arity = self.valobj.GetChildMemberWithName('m_arity').GetValueAsUnsigned()
-        self.num_fixed = self.valobj.GetChildMemberWithName('m_num_fixed').GetValueAsUnsigned()
-        self.objs = self.valobj.GetChildMemberWithName('m_objs')
+        super().__init__(type(self)._cast(valobj, 'lean_closure_object*'), dict)
+
+    # fields
+
+    def get_fun(self): # SBFunction
+        return self.valobj.GetChildMemberWithName('m_fun')
+    
+    def get_arity(self): # unsigned
+        return self.valobj.GetChildMemberWithName('m_arity').GetValueAsUnsigned()
+    
+    def get_num_fixed(self): # unsigned
+        return self.valobj.GetChildMemberWithName('m_num_fixed').GetValueAsUnsigned()
+    
+    def get_objs(self):
+        return self.valobj.GetChildMemberWithName('m_objs')
+    
+    # SynthProvider interface
 
     def has_children(self):
-        return self.num_objs > 0
+        return self.get_objs() > 0
 
     def num_children(self):
-        return self.num_objs
+        return self.get_objs()
     
     def get_child_at_index(self, index):
-        return self.objs.GetChildAtIndex(index).GetSummary()
+        return self.get_objs().GetChildAtIndex(index)
     
     def get_summary(self):
-        return "(Closure fun=%s arity=%s num_fixed=%u)" % (hex(self.fun.GetValueAsAddress()), self.arity, self.num_fixed)
-    
+        return "(Closure fun=%s arity=%s num_fixed=%u)" % (hex(self.get_fun().GetValueAsAddress()), self.get_arity(), self.get_num_fixed())
+
+
 # /* Array arrays */
 # typedef struct {
 #     lean_object   m_header;
@@ -381,26 +437,44 @@ class LeanClosureSynthProvider(LeanObjectLikeSynthProvider):
 # } lean_array_object;
 class LeanArraySynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_array_object').GetPointerType()), dict)
-        self.size = self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
-        self.capacity = self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
-        self.data = self.valobj.GetChildMemberWithName('m_data')
+        super().__init__(type(self)._cast(valobj, 'lean_array_object*'), dict)
+
+    # fields 
+
+    def get_size(self): # unsigned
+        return self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
+    
+    def get_capacity(self): # unsigned
+        return self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
+    
+    def get_data(self): # SBValue
+        return self.valobj.GetChildMemberWithName('m_data')
+    
+    # SynthProvider interface
 
     def has_children(self):
-        return self.size > 0
+        return self.get_size() > 0
     
     def num_children(self):
-        return self.size
+        return self.get_size()
     
     def get_child_at_index(self, index):
-        return self.data.GetChildAtIndex(index).GetSummary()
+        # return self.data.GetChildAtIndex(index).GetSummary()
+        try:
+            if not 0 <= index < self.len:
+                return None
+            offset = index * self.get_addr_size()
+            return self.ptr.CreateChildAtOffset('[%s]' % index, offset, self.valobj.GetType())
+        except Exception as e:
+            LOG.exception('%s', e)
+            raise
     
     def get_summary(self):
-        return "(Array size=%u capacity=%u)" % (self.size, self.capacity)
+        return "(Array size=%u capacity=%u)" % (self.get_size(), self.get_capacity())
 
 class LeanStructArraySynthProvider(LeanObjectLikeSynthProvider):
-    def get_summary(self):
-        return "(StructArray)"
+    def __init__ (self, valobj, dict={}):
+        raise Exception('unsupported StructArray object')
     
 
 # /* Scalar arrays */
@@ -412,23 +486,34 @@ class LeanStructArraySynthProvider(LeanObjectLikeSynthProvider):
 # } lean_sarray_object;
 class LeanScalarArraySynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.GetTarget().FindFirstType('lean_sarray_object').GetPointerType(), dict)
-        self.size = self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
-        self.capacity = self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
-        self.data = self.valobj.GetChildMemberWithName('m_data')
+        super().__init__(type(self)._cast(valobj, 'lean_sarray_object*'), dict)
+
+    # fields
+
+    def get_size(self):
+        return self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
+    
+    def get_capacity(self):
+        return self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
+    
+    def get_data(self):
+        self.valobj.GetChildMemberWithName('m_data')
+
+    # SynthProvider interface
 
     def has_children(self):
-        return self.size > 0
+        return self.get_size() > 0
     
     def num_children(self):
-        return self.size
+        return self.get_size()
     
     def get_child_at_index(self, index):
-        return box_scalar(self.data.GetChildAtIndex(index).unsigned)
+        return LeanBoxedScalarSynthProvider.box_scalar(self.get_data().GetChildAtIndex(index).GetValueAsUnsigned())
     
     def get_summary(self):
-        return "(ScalarArray size=%u capacity=%u)" % (self.size, self.capacity)
-    
+        return "(ScalarArray size=%u capacity=%u)" % (self.get_size(), self.get_capacity())
+
+
 # typedef struct {
 #     lean_object m_header;
 #     size_t      m_size;     /* byte length including '\0' terminator */
@@ -438,24 +523,50 @@ class LeanScalarArraySynthProvider(LeanObjectLikeSynthProvider):
 # } lean_string_object;
 class LeanStringSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_string_object').GetPointerType()), dict)
-        self.size = self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
-        self.capacity = self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
-        self.length = self.valobj.GetChildMemberWithName('m_length').GetValueAsUnsigned()
-        self.data = self.valobj.GetChildMemberWithName('m_data').Cast(self.valobj.GetTarget().FindFirstType('char').GetPointerType()).GetSummary()
-        #.Cast(self.valobj.GetTarget().FindFirstType('char').GetPointerType()).GetValue()
+        super().__init__(type(self)._cast(valobj, 'lean_string_object*'), dict)
+
+    # fields
+
+    def get_size(self):
+        return self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
+    
+    def get_capacity(self):
+        return self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
+    
+    def get_length(self):
+        return self.valobj.GetChildMemberWithName('m_length').GetValueAsUnsigned()
+    
+    def get_data(self):
+        return self.valobj.GetChildMemberWithName('m_data')
+
+    def get_data_as_string(self):
+        # self.data = self.valobj.GetChildMemberWithName('m_data').Cast(self.valobj.GetTarget().FindFirstType('char').GetPointerType()).GetSummary()
+        # #.Cast(self.valobj.GetTarget().FindFirstType('char').GetPointerType()).GetValue()
+        len = min(self.length, MAX_STRING_SUMMARY_LENGTH)
+        if len <= 0:
+            return u''
+        error = lldb.SBError()
+        process = self.valobj.GetProcess()
+        data = process.ReadMemory(self.valobj.GetValueAsUnsigned(), len, error)
+        if error.Success():
+            return data.decode('utf8', 'replace')
+        else:
+            raise Exception('ReadMemory error: %s', error.GetCString())
+
+    # SynthProvider interface
 
     def get_summary(self):
-        strval = string_from_ptr(self.data, min(self.length, MAX_STRING_SUMMARY_LENGTH))
-        if self.length > MAX_STRING_SUMMARY_LENGTH:
+        strval = self.get_data_as_string()
+        if self.get_length() > MAX_STRING_SUMMARY_LENGTH:
             strval += u'...'
         strVal = u'"%s"' % strval
-        return "(String size=%u capacity=%u lenght=%u %s)" % (self.size, self.capacity, self.length, strVal)
+        return "(String size=%u capacity=%u lenght=%u %s)" % (self.get_size(), self.get_capacity(), self.get_length(), strVal)
+
 
 class LeanMpzSynthProvider(LeanObjectLikeSynthProvider):
-    def get_summary(self):
-        return "(MPZ)"
-    
+    def __init__ (self, valobj, dict={}):
+        raise Exception('unsupported MPZ object')
+
 # typedef struct {
 #     lean_object            m_header;
 #     _Atomic(lean_object *) m_value;
@@ -463,13 +574,22 @@ class LeanMpzSynthProvider(LeanObjectLikeSynthProvider):
 # } lean_thunk_object;
 class LeanThunkSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_thunk_object').GetPointerType()), dict)
-        self.value = self.valobj.GetChildMemberWithName('m_value')
-        self.closure = self.valobj.GetChildMemberWithName('m_closure')
+        super().__init__(type(self)._cast(valobj, 'lean_thunk_object*'), dict)
+
+    # fields
+
+    def get_value(self):
+        return self.valobj.GetChildMemberWithName('m_value')
+    
+    def get_closure(self):
+        return self.valobj.GetChildMemberWithName('m_closure')
+    
+    # SynthProvider interface
 
     def get_summary(self):
-        return "(Thunk value=%s closure=%s)" % (self.value.GetSummary(), self.closure.GetSummary())
-    
+        return "(Thunk value=%s closure=%s)" % (self.get_value().GetSummary(), self.get_closure().GetSummary())
+
+
 # typedef struct lean_task {
 #     lean_object            m_header;
 #     _Atomic(lean_object *) m_value;
@@ -477,24 +597,41 @@ class LeanThunkSynthProvider(LeanObjectLikeSynthProvider):
 # } lean_task_object;
 class LeanTaskSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_task_object').GetPointerType()), dict)
-        self.value = self.valobj.GetChildMemberWithName('m_value')
-        self.imp = self.valobj.GetChildMemberWithName('m_imp')
+        super().__init__(type(self)._cast(valobj, 'lean_task_object*'), dict)
+
+    # fields
+
+    def get_value(self):
+        return self.valobj.GetChildMemberWithName('m_value')
+    
+    def get_imp(self):
+        return self.valobj.GetChildMemberWithName('m_imp')
+    
+    # SynthProvider interface
 
     def get_summary(self):
-        return "(Task value=%s)" % self.value.GetSummary()
-    
+        return "(Task value=%s)" % self.get_value().GetSummary()
+
+
 # typedef struct {
 #     lean_object   m_header;
 #     lean_object * m_value;
 # } lean_ref_object;
 class LeanRefSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_ref_object').GetPointerType()), dict)
+        super().__init__(type(self)._cast(valobj, 'lean_ref_object*'), dict)
+
         self.value = self.valobj.GetChildMemberWithName('m_value')
 
+    # fields
+
+    def get_value(self):
+        return self.valobj.GetChildMemberWithName('m_value')
+    
+    # SynthProvider interface
+
     def get_summary(self):
-        return "(Ref value=%s)" % self.value.GetSummary()
+        return "(Ref value=%s)" % self.get_value().GetSummary()
 
 
 # typedef struct {
@@ -510,30 +647,31 @@ class LeanRefSynthProvider(LeanObjectLikeSynthProvider):
 # } lean_external_object;
 class LeanExternalSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        super().__init__(valobj.Cast(valobj.GetTarget().FindFirstType('lean_external_object').GetPointerType()), dict)
-        self.class_ = self.valobj.GetChildMemberWithName('m_class')
-        self.data = self.valobj.GetChildMemberWithName('m_data')
+        super().__init__(type(self)._cast(valobj, 'lean_external_object*'), dict)
 
+    # fields
+
+    def get_class(self):
+        return self.valobj.GetChildMemberWithName('m_class')
+    
+    def get_data(self):
+        return self.valobj.GetChildMemberWithName('m_data')
+    
     def get_summary(self):
-        return "(External class=%s data=%s)" % (self.class_.GetSummary(), self.data.GetSummary())
+        return "(External class=%s data=%s)" % (self.get_class().GetSummary(), self.get_data().GetSummary())
 
 
 class LeanReservedSynthProvider(LeanObjectLikeSynthProvider):
     def __init__ (self, valobj, dict={}):
-        pass
-
-    def get_summary(self):
-        return "(reserved)"
-
-##################################################################################################################
+        raise Exception('unsupported reserved object')
 
 
 class LeanSynthProvider(object):
     def __init__(self, valobj, dict={}):
-        if is_scalar(valobj):
+        if LeanObjectLikeSynthProvider._is_scalar(valobj):
             self.provider = LeanBoxedScalarSynthProvider(valobj)
         else:
-            tag = get_tag(valobj)
+            tag = LeanObjectLikeSynthProvider._get_tag(valobj)
             if tag <= LEAN_MAX_CTOR_TAG:
                 self.provider = LeanCtorSynthProvider(valobj)
             elif tag == LEAN_CLOSURE:
@@ -579,6 +717,7 @@ class LeanSynthProvider(object):
     def get_summary(self):
         return self.provider.get_summary()
 
+##################################################################################################################
 
 class RustSynthProvider(object):
     synth_by_id = weakref.WeakValueDictionary()
