@@ -730,6 +730,12 @@ class LeanStringSynthProvider(LeanObjectSynthProvider):
             LOG.warning('update failed: %s', e)
             pass
 
+    def has_children(self):
+        return False
+    
+    def num_children(self):
+        return 0
+
     def get_summary(self):
         return "{String|RC=%d} size=%u (%u), capacity=%u, %s" % (self.get_rc(), self.get_size(), self.get_length(), self.get_capacity(), self.get_data_as_string())
 
