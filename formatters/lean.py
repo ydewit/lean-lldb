@@ -4,18 +4,11 @@ import logging
 import lldb
 import weakref
 
-if sys.version_info[0] == 2:
-    # python2-based LLDB accepts utf8-encoded ascii strings only.
-    def to_lldb_str(s): return s.encode('utf8', 'backslashreplace') if isinstance(s, unicode) else s
-    range = xrange
-else:
-    to_lldb_str = str
-
 LOG = logging.getLogger(__name__)
 MODULE = sys.modules[__name__]
 CATEGORY = None
 
-MAX_STRING_SUMMARY_LENGTH = 1024
+MAX_STRING_SUMMARY_LENGTH = 512
 
 
 def initialize_category(debugger, internal_dict):
@@ -25,66 +18,12 @@ def initialize_category(debugger, internal_dict):
     CATEGORY = debugger.CreateCategory('Lean')
     CATEGORY.SetEnabled(True)
 
-    attach_synthetic_to_type(LeanSynthProvider, 'lean_object')
-    attach_synthetic_to_type(LeanSynthProvider, 'lean_object*')
+    # attach_synthetic_to_type(LeanSynthProvider, 'lean_object')
+    attach_synthetic_to_type(LeanSynthProvider, 'lean_object *')
 
-    # attach_summary_to_type(tuple_summary_provider, r'^\(.*\)$', True)
-    # attach_synthetic_to_type(MsvcTupleSynthProvider, r'^tuple\$?<.+>$', True)  # *-windows-msvc uses this name since 1.47
-
-    # attach_synthetic_to_type(StrSliceSynthProvider, '&str')
-    # attach_synthetic_to_type(StrSliceSynthProvider, 'str*')
-    # attach_synthetic_to_type(StrSliceSynthProvider, 'str')  # *-windows-msvc uses this name since 1.5?
-    # attach_synthetic_to_type(StrSliceSynthProvider, 'ref$<str$>')
-    # attach_synthetic_to_type(StrSliceSynthProvider, 'ref_mut$<str$>')
-
-    # attach_synthetic_to_type(StdStringSynthProvider, '^(collections|alloc)::string::String$', True)
-    # attach_synthetic_to_type(StdVectorSynthProvider, r'^(collections|alloc)::vec::Vec<.+>$', True)
-    # attach_synthetic_to_type(StdVecDequeSynthProvider,
-    #                          r'^(collections|alloc::collections)::vec_deque::VecDeque<.+>$', True)
-
-    # attach_synthetic_to_type(MsvcEnumSynthProvider, r'^enum\$<.+>$', True)
-    # attach_synthetic_to_type(MsvcEnum2SynthProvider, r'^enum2\$<.+>$', True)
-
-    # attach_synthetic_to_type(SliceSynthProvider, r'^&(mut *)?\[.*\]$', True)
-    # attach_synthetic_to_type(MsvcSliceSynthProvider, r'^(mut *)?slice\$?<.+>.*$', True)
-    # attach_synthetic_to_type(MsvcSliceSynthProvider, r'^ref(_mut)?\$<slice2\$<.+>.*>$', True)
-
-    # attach_synthetic_to_type(StdCStringSynthProvider, '^(std|alloc)::ffi::c_str::CString$', True)
-    # attach_synthetic_to_type(StdCStrSynthProvider, '^&?(std|core)::ffi::c_str::CStr$', True)
-    # attach_synthetic_to_type(StdCStrSynthProvider, 'ref$<core::ffi::c_str::CStr>')
-    # attach_synthetic_to_type(StdCStrSynthProvider, 'ref_mut$<core::ffi::c_str::CStr>')
-
-    # attach_synthetic_to_type(StdOsStringSynthProvider, 'std::ffi::os_str::OsString')
-    # attach_synthetic_to_type(StdOsStrSynthProvider, '^&?std::ffi::os_str::OsStr', True)
-    # attach_synthetic_to_type(StdOsStrSynthProvider, 'ref$<std::ffi::os_str::OsStr>')
-    # attach_synthetic_to_type(StdOsStrSynthProvider, 'ref_mut$<std::ffi::os_str::OsStr>')
-
-    # attach_synthetic_to_type(StdPathBufSynthProvider, 'std::path::PathBuf')
-    # attach_synthetic_to_type(StdPathSynthProvider, '^&?std::path::Path', True)
-    # attach_synthetic_to_type(StdPathSynthProvider, 'ref$<std::path::Path>')
-    # attach_synthetic_to_type(StdPathSynthProvider, 'ref_mut$<std::path::Path>')
-
-    # attach_synthetic_to_type(StdRcSynthProvider, r'^alloc::rc::Rc<.+>$', True)
-    # attach_synthetic_to_type(StdRcSynthProvider, r'^alloc::rc::Weak<.+>$', True)
-    # attach_synthetic_to_type(StdArcSynthProvider, r'^alloc::(sync|arc)::Arc<.+>$', True)
-    # attach_synthetic_to_type(StdArcSynthProvider, r'^alloc::(sync|arc)::Weak<.+>$', True)
-    # attach_synthetic_to_type(StdMutexSynthProvider, r'^std::sync::mutex::Mutex<.+>$', True)
-
-    # attach_synthetic_to_type(StdCellSynthProvider, r'^core::cell::Cell<.+>$', True)
-    # attach_synthetic_to_type(StdRefCellSynthProvider, r'^core::cell::RefCell<.+>$', True)
-    # attach_synthetic_to_type(StdRefCellBorrowSynthProvider, r'^core::cell::Ref<.+>$', True)
-    # attach_synthetic_to_type(StdRefCellBorrowSynthProvider, r'^core::cell::RefMut<.+>$', True)
-
-    # attach_synthetic_to_type(StdHashMapSynthProvider, r'^std::collections::hash::map::HashMap<.+>$', True)
-    # attach_synthetic_to_type(StdHashSetSynthProvider, r'^std::collections::hash::set::HashSet<.+>$', True)
-
-    # attach_synthetic_to_type(GenericEnumSynthProvider, r'^core::option::Option<.+>$', True)
-    # attach_synthetic_to_type(GenericEnumSynthProvider, r'^core::result::Result<.+>$', True)
-    # attach_synthetic_to_type(GenericEnumSynthProvider, r'^alloc::borrow::Cow<.+>$', True)
-
-    if 'lean' in internal_dict.get('source_languages', []):
-        lldb.SBDebugger.SetInternalVariable('target.process.thread.step-avoid-regexp',
-                                            '^<?(std|core|alloc)::', debugger.GetInstanceName())
+    # if 'lean' in internal_dict.get('source_languages', []):
+    #     lldb.SBDebugger.SetInternalVariable('target.process.thread.step-avoid-regexp',
+    #                                         '^<?(std|core|alloc)::', debugger.GetInstanceName())
 
     MAX_STRING_SUMMARY_LENGTH = debugger.GetSetting('target.max-string-summary-length').GetIntegerValue()
 
@@ -93,10 +32,14 @@ def attach_synthetic_to_type(synth_class, type_name, is_regex=False):
     global MODULE, CATEGORY
     # log.debug('attaching synthetic %s to "%s", is_regex=%s', synth_class.__name__, type_name, is_regex)
     synth = lldb.SBTypeSynthetic.CreateWithClassName(__name__ + '.' + synth_class.__name__)
-    synth.SetOptions(lldb.eTypeOptionCascade)
+    # synth.SetOptions(lldb.eTypeOptionCascade)
+    synth.SetOptions(lldb.eTypeOptionNone)
+
     CATEGORY.AddTypeSynthetic(lldb.SBTypeNameSpecifier(type_name, is_regex), synth)
 
-    def summary_fn(valobj, dict): return get_synth_summary(synth_class, valobj, dict)
+    def summary_fn(valobj, dict):
+        return get_synth_summary(synth_class, valobj, dict)
+
     # LLDB accesses summary fn's by name, so we need to create a unique one.
     summary_fn.__name__ = '_get_synth_summary_' + synth_class.__name__
     setattr(MODULE, summary_fn.__name__, summary_fn)
@@ -107,7 +50,7 @@ def attach_summary_to_type(summary_fn, type_name, is_regex=False):
     global MODULE, CATEGORY
     # log.debug('attaching summary %s to "%s", is_regex=%s', summary_fn.__name__, type_name, is_regex)
     summary = lldb.SBTypeSummary.CreateWithFunctionName(__name__ + '.' + summary_fn.__name__)
-    summary.SetOptions(lldb.eTypeOptionCascade)
+    # summary.SetOptions(lldb.eTypeOptionCascade)
     CATEGORY.AddTypeSummary(lldb.SBTypeNameSpecifier(type_name, is_regex), summary)
 
 
@@ -116,8 +59,10 @@ def attach_summary_to_type(summary_fn, type_name, is_regex=False):
 def get_synth_summary(synth_class, valobj, dict):
     try:
         obj_id = valobj.GetIndexOfChildWithName('$$object-id$$')
-        summary = LeanObjectLikeSynthProvider._get_synth_by_id(obj_id).get_summary()
-        return to_lldb_str(summary)
+        summary = LeanSynthProvider._get_synth_by_id(obj_id).get_summary()
+        return str(summary)
+    except KeyError as e:
+        pass
     except Exception as e:
         LOG.exception('%s', e)
         raise
@@ -223,7 +168,10 @@ LEAN_MAX_CTOR_SCALARS_SIZE = 1024
 
 # ----- Synth providers ------
 
-
+# def init_static_vars ( cls, init, *vars ):
+#     for var in vars:
+#         if cls[var] is None:
+#             cls[var] = init(var)
 
 # typedef struct {
 #     int      m_rc;
@@ -231,50 +179,119 @@ LEAN_MAX_CTOR_SCALARS_SIZE = 1024
 #     unsigned m_other:8;
 #     unsigned m_tag:8;
 # } lean_object;
-class LeanObjectLikeSynthProvider(object):
-    _synth_by_id = weakref.WeakValueDictionary()
-    _next_id = 0
-
-    def _get_synth_by_id(id):
-        return LeanObjectLikeSynthProvider._synth_by_id[id]
+class LeanObjectSynthProvider(object):
+    VOID_PTR_TYPE = None
+    UINT8_T_TYPE = None
+    UINT16_T_TYPE = None
+    SIZE_T_TYPE = None
+    CHAR_TYPE = None
+    UNSIGNED_TYPE = None
+    INT_TYPE = None
+    LEAN_OBJECT_TYPE = None
     
     def _get_tag(valobj):
+        # LOG.error('XXXXXX valobj: %s', valobj)
         return valobj.GetChildMemberWithName('m_tag').GetValueAsUnsigned()
 
     def _is_scalar(valobj):
-        return valobj.GetValueAsUnsigned() & 1 == 1
+        return valobj.GetValueAsUnsigned(0) & 1 == 1
     
-    def _cast(valobj, type):
-        return valobj.Cast(valobj.GetTarget().FindFirstType(type))
-    
-    def __init__(self, valobj, ptr_type = None, dict={}):
-        self.obj_id = type(self)._next_id
-        self.valobj = valobj
-        
-        type(self)._synth_by_id[self.obj_id] = self
-        type(self)._next_id += 1
+    def _get_total_size(valobj):
+        expr = '(size_t)lean_object_byte_size(%s)' % valobj.GetValueAsAddress()
+        size = valobj.GetTarget().EvaluateExpression(expr)
+        return size.GetValueAsUnsigned(0)
 
-    ## lean_object fields:
+    def __init__(self, valobj, dict={}):
+        # assert valobj.GetType().IsPointerType(), 'expected pointer type for %s' % valobj
+        self.valobj = valobj
+        self.m_rc = None
+        self.m_cs_sz = None
+        self.m_other = None
+        self.m_tag = None
+
+        # Initialize common static types (target may not be available otherwise)
+        if LeanObjectSynthProvider.VOID_PTR_TYPE is None:
+            LeanObjectSynthProvider.VOID_PTR_TYPE = self.valobj.GetTarget().FindFirstType('void').GetPointerType()
+        
+        if LeanObjectSynthProvider.UINT8_T_TYPE is None:
+            LeanObjectSynthProvider.UINT8_T_TYPE = self.valobj.GetTarget().FindFirstType('uint8_t')
+
+        if LeanObjectSynthProvider.UINT16_T_TYPE is None:
+            LeanObjectSynthProvider.UINT16_T_TYPE = self.valobj.GetTarget().FindFirstType('uint16_t')
+        
+        if LeanObjectSynthProvider.SIZE_T_TYPE is None:
+            LeanObjectSynthProvider.SIZE_T_TYPE = self.valobj.GetTarget().FindFirstType('size_t')
+
+        if LeanObjectSynthProvider.CHAR_TYPE is None:
+            LeanObjectSynthProvider.CHAR_TYPE = self.valobj.GetTarget().FindFirstType('char')
+        
+        if LeanObjectSynthProvider.UNSIGNED_TYPE is None:
+            LeanObjectSynthProvider.UNSIGNED_TYPE = self.valobj.GetTarget().FindFirstType('unsigned')
+
+        if LeanObjectSynthProvider.INT_TYPE is None:
+            LeanObjectSynthProvider.INT_TYPE = self.valobj.GetTarget().FindFirstType('int')
+
+        if LeanObjectSynthProvider.LEAN_OBJECT_TYPE is None:
+            LeanObjectSynthProvider.LEAN_OBJECT_TYPE = self.valobj.GetTarget().FindFirstType('lean_object')
+
+        self.update()
+
+    # ----- lean_object fields ------
 
     def get_tag(self): # unsigned
-        return type(self)._get_tag()
+        return self.m_tag.GetValueAsUnsigned(0)
     
     def get_other(self): # unsigned
-        return self.valobj.GetChildMemberWithName('m_other').GetValueAsUnsigned()
+        return self.m_other.GetValueAsUnsigned(0)
 
     def get_rc(self): # signed
-        return self.valobj.GetChildMemberWithName('m_rc').GetValueAsSigned()
+        return self.m_rc.GetValueAsSigned(0)
     
     def get_cs_sz(self): # unsigned
-        return self.valobj.GetChildMemberWithName('m_cs_sz').GetValueAsUnsigned()
+        return self.m_cs_sz.GetValueAsUnsigned(0)
 
     ## helpers
-
-    def cast(self, typename):
-        return type(self)._cast(self.valobj, typename)
-    
     def is_scalar(self):
-        return type(self)._is_scalar(self.valobj)
+        return LeanObjectSynthProvider._is_scalar(self.valobj)
+
+    def get_void_ptr_type(self):
+        assert LeanObjectSynthProvider.VOID_PTR_TYPE is not None, 'void* type not initialized'
+        return LeanObjectSynthProvider.VOID_PTR_TYPE
+        
+    def get_uint8_t_type(self):
+        assert LeanObjectSynthProvider.UINT8_T_TYPE is not None, 'uint8_t type not initialized'
+        return LeanObjectSynthProvider.UINT8_T_TYPE
+
+    def get_uint16_t_type(self):
+        assert LeanObjectSynthProvider.UINT16_T_TYPE is not None, 'uint16_t type not initialized'
+        return LeanObjectSynthProvider.UINT16_T_TYPE
+    
+    def get_size_t_type(self):
+        assert LeanObjectSynthProvider.SIZE_T_TYPE is not None, 'size_t type not initialized'
+        return LeanObjectSynthProvider.SIZE_T_TYPE
+    
+    def get_char_type(self):
+        assert LeanObjectSynthProvider.CHAR_TYPE is not None, 'char type bytes not initialized'
+        return LeanObjectSynthProvider.CHAR_TYPE
+    
+    def get_unsigned_type(self):
+        assert LeanObjectSynthProvider.UNSIGNED_TYPE is not None, 'unsigned type not initialized'
+        return LeanObjectSynthProvider.UNSIGNED_TYPE
+    
+    def get_int_type(self):
+        assert LeanObjectSynthProvider.INT_TYPE is not None, 'int type not initialized'
+        return LeanObjectSynthProvider.INT_TYPE
+    
+    def get_lean_object_type(self):
+        assert LeanObjectSynthProvider.LEAN_OBJECT_TYPE is not None, 'lean_object type not initialized'
+        return LeanObjectSynthProvider.LEAN_OBJECT_TYPE
+    
+    def get_body_address_of(self):
+        return self.valobj.GetValueAsAddress() + self.get_lean_object_type().GetByteSize()
+    
+    def cast(self, type_name):
+        type = self.valobj.GetTarget().FindFirstType(type_name).GetPointerType()
+        return self.valobj.Cast(type)
 
     def get_addr_size(self): # uint8_t
         return self.valobj.GetTarget().GetAddressByteSize()
@@ -285,108 +302,179 @@ class LeanObjectLikeSynthProvider(object):
     def _call(self, name, returns, *args):
         argStrs = [ ]
         for arg in args:
-            if isinstance(arg, str):
+            if arg is None:
+                raise Exception('None argument')
+            elif arg.IsValid() == False:
+                raise Exception('Invalid argument')
+            elif isinstance(arg, str):
+                LOG.warn('str argument type: %s', arg.GetValue())
                 argStrs.append('"%s"' % arg.replace('\\', '\\\\').replace('"', '\"'))
-            elif isinstance(arg, lldb.SBValue):
-                argStrs.append(arg.GetName())
             else:
-                argStrs.append(repr(arg))
+                argStrs.append(arg.GetValue())
         expr = '(%s)%s(%s)' % (returns, name, ', '.join(argStrs))
-        return self.valobj.CreateValueFromExpression(name, expr)
+        LOG.error('XXXXXX expr: %s', expr)
+        return self.valobj.GetFrame().EvaluateExpression(expr)
 
-    def get_byte_size(self):
-        return self._call('lean_object_byte_size', 'size_t', self.valobj).GetValueAsUnsigned()
+    # ----- Synth interface ------
 
-    # SynthProvider interface
-
+    # update the internal state whenever the state of the variables in LLDB changes
     def update(self):
+        self.m_rc = None
+        self.m_cs_sz = None
+        self.m_other = None
+        self.m_tag = None
+        try:
+            self.m_rc    = self.valobj.GetChildMemberWithName('m_rc')
+            # self.m_rc    = self.valobj.GetValueForExpressionPath('->m_rc')
+            self.m_cs_sz = self.valobj.GetChildMemberWithName('m_cs_sz')
+            # self.m_cs_sz = self.valobj.GetValueForExpressionPath('->m_cs_sz')
+            self.m_other = self.valobj.GetChildMemberWithName('m_other').Clone('m_other')
+            # self.m_other = self.valobj.GetValueForExpressionPath('->m_other')
+            self.m_tag   = self.valobj.GetChildMemberWithName('m_tag')
+            # self.m_tag   = self.valobj.GetValueForExpressionPath('->m_tag')
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
+
+    # True if this object might have children, and False if this object can be guaranteed not to have children.
+    def has_children(self):
         return True
+        # return False
+
+    # the number of children that you want your object to have 
+    def num_children(self):
+        return 4
+
+    # return a new LLDB SBValue object representing the child at the index given as argument 
+    def get_child_at_index(self, index): # return SBValue for the child
+        if index == 0:
+            return self.m_rc
+        elif index == 1:
+            return self.m_cs_sz
+        elif index == 2:
+            return self.m_other
+        elif index == 3:
+            return self.m_tag
+        return None
+
+    # the index of the synthetic child whose name is given as argument 
+    def get_child_index(self, name):
+        if name == 'm_rc':
+            return 0
+        elif name == 'm_cs_sz':
+            return 1
+        elif name == 'm_other':
+            return 2
+        elif name == 'm_tag':
+            return 3
+        else:
+            return -1            
+        # LOG.error('XXXXXX name: %s', name)
+        # if name.startswith('['):
+        #     return int(name.lstrip('[').rstrip(']'))
+        # return -1
+
+    def get_summary(self):
+        return "{Obj|TAG=%d,RC=%s,OTHER=%u,CS_SZ=%s}" % (self.get_rc(), self.get_tag() if self.get_rc() != 0 else "∞", self.get_other(), self.get_cs_sz())
+
+
+class LeanBoxedScalarSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, valobj, dict={}):
+        super().__init__(valobj, dict)
+        self.update()
+
+    def _box_scalar(valobj):
+        return valobj.CreateValueFromExpression(None, '((lean_object*)(%s << 1 | 1))' % valobj.GetValueAsUnsigned())
+    
+    def _unbox_scalar(valobj):
+        return valobj.GetValueAsUnsigned() >> 1
+    
+    def box_scalar(self):
+        return LeanBoxedScalarSynthProvider._box_scalar(self.valobj)
+
+    def unbox_scalar(self):
+        return LeanBoxedScalarSynthProvider._unbox_scalar(self.valobj)
+
+    # ----- Synth interface ------
 
     def has_children(self):
         return False
 
+    # the number of children that you want your object to have 
     def num_children(self):
         return 0
 
-    def get_child_at_index(self, index):
-        return None
-
-    def get_child_index(self, name):
-        if name == '$$object-id$$':
-            return self.obj_id
-        if name.startswith('['):
-            return int(name.lstrip('[').rstrip(']'))
-        return None
-
     def get_summary(self):
-        pass
-
-
-class LeanBoxedScalarSynthProvider(LeanObjectLikeSynthProvider):
-    def box_scalar(valobj):
-        return valobj.box_scalar()
-    
-    def unbox_scalar(valobj):
-        return valobj.unbox_scalar()
-    
-    def box_scalar(self):
-        return self.valobj.CreateValueFromExpression(None, '((lean_object*)(%s << 1 | 1))' % self.valobj.GetValueAsUnsigned())
-
-    def unbox_scalar(self):
-        return self.valobj.GetValueAsUnsigned() >> 1
-
-    def get_summary(self):
-        return "(boxed scalar size=%d) %d" % (self.get_byte_size(), self.unbox_scalar())
-
+        try:
+            return "{Boxed} %d" % self.unbox_scalar()
+        except Exception as e:
+            LOG.exception('%s', e)
+            return "error"
 
 # typedef struct {
 #     lean_object   m_header;
 #     lean_object * m_objs[0];
 # } lean_ctor_object;
-class LeanCtorSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_ctor_object*'), dict)
+class LeanCtorSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag <= LEAN_MAX_CTOR_TAG, 'invalid ctor object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # boxed fields
+    # ----- fields ------
+
+    def get_ctor_idx(self):
+        return self.get_tag()
+
     def get_num_objs(self):
         return self.get_other()
 
     def get_objs(self):
-        return self.valobj.GetChildMemberWithName('m_objs')
+        return self.m_objs
 
     # scalar fields: AFAIK, there is not enough runtime info to retrieve them!
-
-    # helpers
-    
     def has_scalars(self):
-        return self.get_byte_size() - self.get_addr_size() - self.num_objs * self.get_addr_size() > 0
+        objs_size = self.get_num_objs() * self.get_lean_object_type().GetPointerType().GetByteSize()
+        return LeanObjectSynthProvider._get_total_size(self.valobj) - self.get_lean_object_type().GetByteSize() - objs_size > 0
 
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        try:
+            super().update()
+            self.m_objs = self.valobj.CreateValueFromAddress("m_objs", self.get_body_address_of(), self.get_lean_object_type().GetPointerType().GetPointerType())
+            assert self.m_objs.IsValid()
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def has_children(self):
-        if self.get_other() > 0:
-            return True
-        return False
+        return True
     
     def num_children(self):
-        return self.get_other()
+        if self.get_num_objs() > LEAN_MAX_CTOR_FIELDS:
+            return LEAN_MAX_CTOR_FIELDS
+        return self.get_num_objs()
     
     def get_child_at_index(self, index):
-        return self.get_objs().GetChildAtIndex(index)
+        if index >= self.get_num_objs():
+            return None
+        if index < 0:
+            return None
 
-        # return o.Cast(lldb.target.FindFirstType('lean_ctor_object').GetPointerType()).GetChildMemberWithName('m_objs').GetChildAtIndex(i)
-        # try:
-        #     if not 0 <= index < self.len:
-        #         return None
-        #     offset = index * self.addr_size()
-        #     return self.ptr.CreateChildAtOffset('[%s]' % index, offset, self.valobj.GetType())
-        # except Exception as e:
-        #     LOG.exception('%s', e)
-        #     raise
+        type = self.get_lean_object_type().GetPointerType()
+        offset = index * type.GetByteSize()
+        return self.get_objs().CreateChildAtOffset('[%s]' % index, offset, type)
 
+    def get_child_index(self, name):
+        try:
+            return int(name.lstrip("[").rstrip("]"))
+        except:
+            return -1
+    
     def get_summary(self):
-        return "(Ctor#%u rc=%s num_objs=%u size=%s has_scalars=%s)" % (self.get_tag(), str(self.get_rc()) if self.get_rc() != 0 else "∞", self.get_num_objs(), self.get_byte_size(), "true" if self.has_scalars() else "false")
-
+        return "{Ctor#%u|RC=%s} objs=%u, scalars=%s" % (self.get_ctor_idx(), str(self.get_rc()) if self.get_rc() != 0 else "∞", self.get_num_objs(), "true" if self.has_scalars() else "false")
 
 # typedef struct {
 #     lean_object   m_header;
@@ -395,37 +483,66 @@ class LeanCtorSynthProvider(LeanObjectLikeSynthProvider):
 #     uint16_t      m_num_fixed; /* Number of arguments that have been already fixed. */
 #     lean_object * m_objs[0];
 # } lean_closure_object;
-class LeanClosureSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_closure_object*'), dict)
+class LeanClosureSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        super().__init__(valobj, dict)
+        self.update()
+        assert tag == LEAN_CLOSURE, 'invalid closure object %d' % tag
 
-    # fields
+    # ----- fields ------
 
     def get_fun(self): # SBFunction
-        return self.valobj.GetChildMemberWithName('m_fun')
+        return self.m_fun
     
     def get_arity(self): # unsigned
-        return self.valobj.GetChildMemberWithName('m_arity').GetValueAsUnsigned()
+        return self.m_arity.GetValueAsUnsigned()
     
     def get_num_fixed(self): # unsigned
-        return self.valobj.GetChildMemberWithName('m_num_fixed').GetValueAsUnsigned()
+        return self.m_num_fixed.GetValueAsUnsigned()
     
     def get_objs(self):
-        return self.valobj.GetChildMemberWithName('m_objs')
+        return self.m_objs
     
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_fun = None
+        self.m_arity = None
+        self.m_num_fixed = None
+        self.m_objs = None
+        try:
+            super().update()
+            self.m_fun       = self.valobj.CreateValueFromAddress("m_fun",       self.get_body_address_of(), self.get_void_ptr_type())
+            self.m_arity     = self.valobj.CreateValueFromAddress("m_arity",     self.get_body_address_of() + self.get_void_ptr_type().GetByteSize(), self.get_uint16_t_type())
+            self.m_num_fixed = self.valobj.CreateValueFromAddress("m_num_fixed", self.get_body_address_of() + self.get_void_ptr_type().GetByteSize() + self.get_uint16_t_type().GetByteSize(), self.get_uint16_t_type())
+            self.m_objs      = self.valobj.CreateValueFromAddress("m_objs",      self.get_body_address_of() + self.get_void_ptr_type().GetByteSize() + self.get_uint16_t_type().GetByteSize() + self.get_uint16_t_type().GetByteSize(), self.get_lean_object_type().GetPointerType())
+        except Exception as e:
+            LOG.error('update failed: %s', e)
+            pass
 
     def has_children(self):
-        return self.get_objs() > 0
+        return self.get_num_fixed() > 0
 
     def num_children(self):
-        return self.get_objs()
+        return self.get_num_fixed()
     
     def get_child_at_index(self, index):
-        return self.get_objs().GetChildAtIndex(index)
+        if index >= self.get_num_fixed():
+            return None
+        if index < 0:
+            return None
+        type = self.get_lean_object_type().GetPointerType()
+        offset = index * type.GetByteSize()
+        return self.get_objs().CreateChildAtOffset('[%s]' % index, offset, type)
     
+    def get_child_index(self, name):
+        try:
+            return int(name.lstrip("[").rstrip("]"))
+        except:
+            return -1
+
     def get_summary(self):
-        return "(Closure fun=%s arity=%s num_fixed=%u)" % (hex(self.get_fun().GetValueAsAddress()), self.get_arity(), self.get_num_fixed())
+        return "{Closure|RC=%d} fun=%s, arity=%s, num_fixed=%u" % (self.get_rc(), hex(self.get_fun().GetLoadAddress()), self.get_arity(), self.get_num_fixed())
 
 
 # /* Array arrays */
@@ -435,22 +552,37 @@ class LeanClosureSynthProvider(LeanObjectLikeSynthProvider):
 #     size_t        m_capacity;
 #     lean_object * m_data[0];
 # } lean_array_object;
-class LeanArraySynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_array_object*'), dict)
+class LeanArraySynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_ARRAY, 'invalid array object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # fields 
+    # ----- fields ------
 
     def get_size(self): # unsigned
-        return self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
+        return self.m_size.GetValueAsUnsigned()
     
     def get_capacity(self): # unsigned
-        return self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
+        return self.m_capacity.GetValueAsUnsigned()
     
     def get_data(self): # SBValue
-        return self.valobj.GetChildMemberWithName('m_data')
+        return self.m_data
     
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_size = None
+        self.m_capacity = None
+        self.m_data = None
+        try:
+            super().update()
+            self.m_size     = self.valobj.CreateValueFromAddress("m_size",     self.get_body_address_of(), self.get_size_t_type())
+            self.m_capacity = self.valobj.CreateValueFromAddress("m_capacity", self.get_body_address_of() + 1 * self.get_size_t_type().GetByteSize(), self.get_size_t_type())
+            self.m_data     = self.valobj.CreateValueFromAddress("m_data",     self.get_body_address_of() + 2 * self.get_size_t_type().GetByteSize(), self.get_lean_object_type().GetPointerType())
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def has_children(self):
         return self.get_size() > 0
@@ -458,23 +590,32 @@ class LeanArraySynthProvider(LeanObjectLikeSynthProvider):
     def num_children(self):
         return self.get_size()
     
-    def get_child_at_index(self, index):
-        # return self.data.GetChildAtIndex(index).GetSummary()
+    def get_child_at_index(self, index): # FIXME!
+        if not 0 <= index < self.get_size():
+            return None
+        type = self.get_lean_object_type().GetPointerType()
+        offset = type.GetByteSize() * index
+        return self.get_data().CreateChildAtOffset('[%s]' % index, offset, type)
+
+    def get_child_index(self, name):
         try:
-            if not 0 <= index < self.len:
-                return None
-            offset = index * self.get_addr_size()
-            return self.ptr.CreateChildAtOffset('[%s]' % index, offset, self.valobj.GetType())
-        except Exception as e:
-            LOG.exception('%s', e)
-            raise
+            return int(name.lstrip("[").rstrip("]"))
+        except:
+            return -1
+
+    def get_summary(self):
+        return "{Array|RC=%d} size=%u, capacity=%u" % (self.get_rc(), self.get_size(), self.get_capacity())
+
+class LeanStructArraySynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):        
+        assert tag == LEAN_STRUCT_ARRAY, 'invalid struct array object %d' % tag
+        super().__init__(valobj, dict)
+
+    def has_children(self):
+        return 0
     
     def get_summary(self):
-        return "(Array size=%u capacity=%u)" % (self.get_size(), self.get_capacity())
-
-class LeanStructArraySynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        raise Exception('unsupported StructArray object')
+        return "<invalid struct array object>"
     
 
 # /* Scalar arrays */
@@ -484,22 +625,38 @@ class LeanStructArraySynthProvider(LeanObjectLikeSynthProvider):
 #     size_t        m_capacity;
 #     uint8_t       m_data[0];
 # } lean_sarray_object;
-class LeanScalarArraySynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_sarray_object*'), dict)
+class LeanScalarArraySynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_SCALAR_ARRAY, 'invalid scalar array object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # fields
+    # ----- fields ------
 
     def get_size(self):
-        return self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
+        return self.m_size.GetValueAsUnsigned()
     
     def get_capacity(self):
-        return self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
+        return self.m_capacity.GetValueAsUnsigned()
     
     def get_data(self):
-        self.valobj.GetChildMemberWithName('m_data')
+        return self.m_data
 
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_size = None
+        self.m_capacity = None
+        self.m_data = None
+        try:
+            super().update()
+            self.m_size     = self.valobj.CreateValueFromAddress("m_size",     self.get_body_address_of(), self.get_size_t_type())
+            self.m_capacity = self.valobj.CreateValueFromAddress("m_capacity", self.get_body_address_of() + 1 * self.get_size_t_type().GetByteSize(), self.get_size_t_type())
+            self.m_data     = self.valobj.CreateValueFromAddress("m_data",     self.get_body_address_of() + 2 * self.get_size_t_type().GetByteSize(), self.get_uint8_t_type())
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def has_children(self):
         return self.get_size() > 0
@@ -508,10 +665,10 @@ class LeanScalarArraySynthProvider(LeanObjectLikeSynthProvider):
         return self.get_size()
     
     def get_child_at_index(self, index):
-        return LeanBoxedScalarSynthProvider.box_scalar(self.get_data().GetChildAtIndex(index).GetValueAsUnsigned())
+        return LeanBoxedScalarSynthProvider._box_scalar(self.get_data().GetChildAtIndex(index).GetValueAsUnsigned(0))
     
     def get_summary(self):
-        return "(ScalarArray size=%u capacity=%u)" % (self.get_size(), self.get_capacity())
+        return "{ScalarArray|RC=%d} size=%u, capacity=%u, [%s])" % (self.get_rc(), self.get_size())
 
 
 # typedef struct {
@@ -521,73 +678,112 @@ class LeanScalarArraySynthProvider(LeanObjectLikeSynthProvider):
 #     size_t      m_length;   /* UTF8 length */
 #     char        m_data[0];
 # } lean_string_object;
-class LeanStringSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_string_object*'), dict)
+class LeanStringSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_STRING, 'invalid string object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # fields
+    # ----- fields ------
 
     def get_size(self):
-        return self.valobj.GetChildMemberWithName('m_size').GetValueAsUnsigned()
+        return self.m_size.GetValueAsUnsigned()
     
     def get_capacity(self):
-        return self.valobj.GetChildMemberWithName('m_capacity').GetValueAsUnsigned()
+        return self.m_capacity.GetValueAsUnsigned()
     
     def get_length(self):
-        return self.valobj.GetChildMemberWithName('m_length').GetValueAsUnsigned()
+        return self.m_length.GetValueAsUnsigned()
     
     def get_data(self):
-        return self.valobj.GetChildMemberWithName('m_data')
+        return self.m_data
 
     def get_data_as_string(self):
-        # self.data = self.valobj.GetChildMemberWithName('m_data').Cast(self.valobj.GetTarget().FindFirstType('char').GetPointerType()).GetSummary()
-        # #.Cast(self.valobj.GetTarget().FindFirstType('char').GetPointerType()).GetValue()
-        len = min(self.length, MAX_STRING_SUMMARY_LENGTH)
-        if len <= 0:
-            return u''
+        addr = self.get_data().AddressOf().GetValueAsUnsigned()
+        # if addr == 0:
+        #     return u'NULL'
         error = lldb.SBError()
-        process = self.valobj.GetProcess()
-        data = process.ReadMemory(self.valobj.GetValueAsUnsigned(), len, error)
+        content = self.valobj.process.ReadCStringFromMemory(addr, MAX_STRING_SUMMARY_LENGTH, error)
         if error.Success():
-            return data.decode('utf8', 'replace')
+            if self.get_length() > MAX_STRING_SUMMARY_LENGTH:
+                return '"%s..."' % content
+            else:
+                return '"%s"' % content
         else:
-            raise Exception('ReadMemory error: %s', error.GetCString())
+            return "<error: %s>" % error.GetCString()
 
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_size = None
+        self.m_capacity = None
+        self.m_length = None
+        self.m_data = None
+        try:
+            super().update()
+            self.m_size     = self.valobj.CreateValueFromAddress("m_size",     self.get_body_address_of(), self.get_size_t_type())
+            self.m_capacity = self.valobj.CreateValueFromAddress("m_capacity", self.get_body_address_of() + 1 * self.get_size_t_type().GetByteSize(), self.get_size_t_type())
+            self.m_length   = self.valobj.CreateValueFromAddress("m_length",   self.get_body_address_of() + 2 * self.get_size_t_type().GetByteSize(), self.get_size_t_type())
+            self.m_data     = self.valobj.CreateValueFromAddress("m_data",     self.get_body_address_of() + 3 * self.get_size_t_type().GetByteSize(), self.get_char_type().GetPointerType())
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def get_summary(self):
-        strval = self.get_data_as_string()
-        if self.get_length() > MAX_STRING_SUMMARY_LENGTH:
-            strval += u'...'
-        strVal = u'"%s"' % strval
-        return "(String size=%u capacity=%u lenght=%u %s)" % (self.get_size(), self.get_capacity(), self.get_length(), strVal)
+        return "{String|RC=%d} size=%u (%u), capacity=%u, %s" % (self.get_rc(), self.get_size(), self.get_length(), self.get_capacity(), self.get_data_as_string())
 
+class LeanMpzSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_MPZ, 'invalid mpz object %d' % tag
+        super().__init__(valobj, dict)
 
-class LeanMpzSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        raise Exception('unsupported MPZ object')
+    def has_children(self):
+        return 0
+    
+    def get_summary(self):
+        return "<invalid mpz object>"
 
 # typedef struct {
 #     lean_object            m_header;
 #     _Atomic(lean_object *) m_value;
 #     _Atomic(lean_object *) m_closure;
 # } lean_thunk_object;
-class LeanThunkSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_thunk_object*'), dict)
+class LeanThunkSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_THUNK, 'invalid thunk object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # fields
+    # ----- fields ------
 
     def get_value(self):
-        return self.valobj.GetChildMemberWithName('m_value')
+        return self.m_value
     
     def get_closure(self):
-        return self.valobj.GetChildMemberWithName('m_closure')
+        return self.m_closure
     
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_value = None
+        self.m_closure = None
+        try:
+            super().update()
+            self.m_value     = self.valobj.CreateValueFromAddress("m_value",   self.get_body_address_of(), self.get_lean_object_type().GetPointerType())
+            self.m_closure = self.valobj.CreateValueFromAddress("m_closure", self.get_body_address_of() + self.get_lean_object_type().GetByteSize(), self.get_lean_object_type().GetPointerType())
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def get_summary(self):
-        return "(Thunk value=%s closure=%s)" % (self.get_value().GetSummary(), self.get_closure().GetSummary())
+        if self.get_value().GetValueAsAddress() == 0:
+            return "{Thunk|rc=%s} %s" % (self.get_rc(), 
+            self.get_closure().GetSummary())
+        else:
+            return "{Thunk|RC=%s} %s" % (self.get_rc(), self.get_value().GetSummary())
+
 
 
 # typedef struct lean_task {
@@ -595,43 +791,66 @@ class LeanThunkSynthProvider(LeanObjectLikeSynthProvider):
 #     _Atomic(lean_object *) m_value;
 #     lean_task_imp *        m_imp;
 # } lean_task_object;
-class LeanTaskSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_task_object*'), dict)
+class LeanTaskSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_TASK, 'invalid task object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # fields
+    # ----- SynthProvider interface ------
 
     def get_value(self):
-        return self.valobj.GetChildMemberWithName('m_value')
+        return self.m_value
     
     def get_imp(self):
-        return self.valobj.GetChildMemberWithName('m_imp')
+        return self.m_imp
     
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_value = None
+        self.m_imp = None
+        try:
+            super().update()
+            self.m_value = self.valobj.CreateValueFromAddress("m_value", self.get_body_address_of(), self.get_lean_object_type().GetPointerType())
+            self.m_imp   = self.valobj.CreateValueFromAddress("m_imp",   self.get_body_address_of() + self.get_lean_object_type().GetByteSize(), self.get_void_ptr_type())
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def get_summary(self):
-        return "(Task value=%s)" % self.get_value().GetSummary()
-
+        return "{Task|RC=%d} value=%s, impl=%s)" % (self.get_rc(), self.get_value().GetSummary(), hex(self.get_imp().GetLoadAddress()))
 
 # typedef struct {
 #     lean_object   m_header;
 #     lean_object * m_value;
 # } lean_ref_object;
-class LeanRefSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_ref_object*'), dict)
-
-        self.value = self.valobj.GetChildMemberWithName('m_value')
+class LeanRefSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_REF, 'invalid ref object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
     # fields
 
     def get_value(self):
-        return self.valobj.GetChildMemberWithName('m_value')
+        return self.m_value
     
-    # SynthProvider interface
+    # ----- SynthProvider interface ------
+
+    def update(self):
+        self.m_value = None
+        try:
+            super().update()
+            self.m_value = self.valobj.CreateValueFromAddress("m_value", self.get_body_address_of(), self.get_lean_object_type().GetPointerType())
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def get_summary(self):
-        return "(Ref value=%s)" % self.get_value().GetSummary()
+        return "(Ref|RC=%d} %s" % (self.get_rc(), self.get_value().GetSummary())
 
 
 # typedef struct {
@@ -645,77 +864,125 @@ class LeanRefSynthProvider(LeanObjectLikeSynthProvider):
 #     lean_external_class * m_class;
 #     void *                m_data;
 # } lean_external_object;
-class LeanExternalSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        super().__init__(type(self)._cast(valobj, 'lean_external_object*'), dict)
+class LeanExternalSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):
+        assert tag == LEAN_EXTERNAL, 'invalid external object %d' % tag
+        super().__init__(valobj, dict)
+        self.update()
 
-    # fields
+    # ----- fields ------
 
     def get_class(self):
-        return self.valobj.GetChildMemberWithName('m_class')
+        return self.m_class
     
     def get_data(self):
-        return self.valobj.GetChildMemberWithName('m_data')
+        return self.m_data
     
-    def get_summary(self):
-        return "(External class=%s data=%s)" % (self.get_class().GetSummary(), self.get_data().GetSummary())
-
-
-class LeanReservedSynthProvider(LeanObjectLikeSynthProvider):
-    def __init__ (self, valobj, dict={}):
-        raise Exception('unsupported reserved object')
-
-
-class LeanSynthProvider(object):
-    def __init__(self, valobj, dict={}):
-        if LeanObjectLikeSynthProvider._is_scalar(valobj):
-            self.provider = LeanBoxedScalarSynthProvider(valobj)
-        else:
-            tag = LeanObjectLikeSynthProvider._get_tag(valobj)
-            if tag <= LEAN_MAX_CTOR_TAG:
-                self.provider = LeanCtorSynthProvider(valobj)
-            elif tag == LEAN_CLOSURE:
-                self.provider = LeanClosureSynthProvider(valobj)
-            elif tag == LEAN_ARRAY:
-                self.provider = LeanArraySynthProvider(valobj)
-            elif tag == LEAN_STRUCT_ARRAY:
-                self.provider = LeanStructArraySynthProvider(valobj)
-            elif tag == LEAN_SCALAR_ARRAY:
-                self.provider = LeanScalarArraySynthProvider(valobj)
-            elif tag == LEAN_STRING:
-                self.provider = LeanStringSynthProvider(valobj)
-            elif tag == LEAN_MPZ:
-                self.provider = LeanMpzSynthProvider(valobj)
-            elif tag == LEAN_THUNK:
-                self.provider = LeanThunkSynthProvider(valobj)
-            elif tag == LEAN_TASK:
-                self.provider = LeanTaskSynthProvider(valobj)
-            elif tag == LEAN_REF:
-                self.provider = LeanRefSynthProvider(valobj)
-            elif tag == LEAN_EXTERNAL:
-                self.provider = LeanExternalSynthProvider(valobj)
-            elif tag == LEAN_RESERVED:
-                self.provider = LeanReservedSynthProvider(valobj)
-            else:
-                raise Exception('Unknown lean object tag: %d' % tag)
+    # ----- SynthProvider interface ------
 
     def update(self):
-        return self.provider.update()
-
-    def has_children(self):
-        return self.provider.has_children()
-
-    def num_children(self):
-        return self.provider.num_children()
-
-    def get_child_at_index(self, index):
-        return self.provider.get_child_at_index(index)
-
-    def get_child_index(self, name):
-        return self.provider.get_child_index(name)
+        self.m_class = None
+        self.m_data = None
+        try:
+            super().update()
+            self.m_class = self.valobj.CreateValueFromAddress("m_class", self.get_body_address_of(), self.get_void_ptr_type())
+            self.m_data  = self.valobj.CreateValueFromAddress("m_data",  self.get_body_address_of() + self.get_void_ptr_type().GetByteSize(), self.get_void_ptr_type())
+            return True
+        except Exception as e:
+            LOG.warning('update failed: %s', e)
+            pass
 
     def get_summary(self):
-        return self.provider.get_summary()
+        return "{External|RC=%d} class=%s, data=%s" % (self.get_rc(), hex(self.get_value().GetLoadAddress()), hex(self.get_data().GetLoadAddress()))
+
+
+class LeanReservedSynthProvider(LeanObjectSynthProvider):
+    def __init__ (self, tag, valobj, dict={}):        
+        assert tag == LEAN_RESERVED, 'invalid reserved object %d' % tag
+        super().__init__(valobj, dict)
+
+    def has_children(self):
+        return 0
+    
+    def get_summary(self):
+        return "<invalid object>"
+
+class LeanSynthProvider(object):
+    _synth_by_id = weakref.WeakValueDictionary()
+    _next_id = 0
+
+    def _get_next_id():
+        obj_id = LeanSynthProvider._next_id
+        LeanSynthProvider._next_id += 1
+        return obj_id
+    
+    def _get_synth_by_id(id):
+        provider = LeanSynthProvider._synth_by_id[id]
+        return provider
+    
+    def _add_synth_by_id(provider):
+        # LOG.error('provider.obj_id: %d %s', provider.m_obj_id, str(type(provider.m_obj)))
+        LeanSynthProvider._synth_by_id[provider.m_obj_id] = provider
+        return provider.m_obj_id
+
+    def __init__(self, valobj, dict={}):
+        if LeanObjectSynthProvider._is_scalar(valobj):
+            self.m_tag = -1
+            self.m_obj = LeanBoxedScalarSynthProvider(valobj, dict)
+        else:
+            self.m_tag = LeanObjectSynthProvider._get_tag(valobj)
+
+            if self.m_tag <= LEAN_MAX_CTOR_TAG:
+                self.m_obj = LeanCtorSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_CLOSURE:
+                self.m_obj = LeanClosureSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_ARRAY:
+                self.m_obj = LeanArraySynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_STRUCT_ARRAY:
+                self.m_obj = LeanStructArraySynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_SCALAR_ARRAY:
+                self.m_obj = LeanScalarArraySynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_STRING:
+                self.m_obj = LeanStringSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_MPZ:
+                self.m_obj = LeanMpzSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_THUNK:
+                self.m_obj = LeanThunkSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_TASK:
+                self.m_obj = LeanTaskSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_REF:
+                self.m_obj = LeanRefSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_EXTERNAL:
+                self.m_obj = LeanExternalSynthProvider(self.m_tag, valobj, dict)
+            elif self.m_tag == LEAN_RESERVED:
+                self.m_obj = LeanReservedSynthProvider(self.m_tag, valobj, dict)
+            else:
+                raise Exception('Unknown lean object tag: %d for %s' % (self.m_tag, valobj))
+
+        self.m_obj_id = LeanSynthProvider._get_next_id()
+        LeanSynthProvider._add_synth_by_id(self)
+
+    
+    def update(self):
+        # LOG.error('updated called!')
+        return self.m_obj.update()
+
+    def has_children(self):
+        return self.m_obj.has_children()
+
+    def num_children(self):
+        return self.m_obj.num_children()
+
+    def get_child_at_index(self, index):
+        return self.m_obj.get_child_at_index(index)
+
+    def get_child_index(self, name):
+        if name == '$$object-id$$':
+            return self.m_obj_id
+        return self.m_obj.get_child_index(name)
+
+    def get_summary(self):
+        return self.m_obj.get_summary()
 
 ##################################################################################################################
 
