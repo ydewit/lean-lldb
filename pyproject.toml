@@ -1,0 +1,25 @@
+[tool.poetry]
+name = "lean-lldb"
+version = "0.1.0"
+description = "An LLDB extension for debugging Lean programs"
+license = "Apache-2.0"
+
+authors = [
+    "Yuri de Wit <ydewit@gmail.com>",
+]
+
+readme = "README.md"
+repository = "https://github.com/ydewit/lean-lldb"
+homepage = "https://github.com/ydewit/lean-lldb"
+
+keywords = ["debugging", "lldb", "lean"]
+
+[tool.poetry.dependencies]
+python = "^3.7"
+six = "^1.0.0"
+
+[tool.poetry.dev-dependencies]
+pytest = "^7.4.0"
+pytest-xdist = "^2.5.0"
+pexpect = "^4.8.0"
+test_extension = { path = "tests/test_extension/" }
