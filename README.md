@@ -49,7 +49,6 @@ Some interesting ideas to consider:
 * printing of Lean-level stack traces
 * listing the Lean source code
 * walking up and down the Lean call stack
-* 
 
 **NOTE**: Although it may be interesting to push this project further and implement these additional features, a better use of time would be to look into generating DWARF symbols for a future, first-class debugger for Lean.
 
@@ -156,6 +155,10 @@ If debugging symbols are not available, you'll see something like:
 no type was found matching 'lean_ctor_object'
 ```
 
+Nix Hardening
+-------------
+
+Nix's default hardening and optimization features, while beneficial for security and performance, conflict with lean-lldb's ability to inspect Lean4 variables. This automatic behavior in Nix builds prevents lean-lldb from functioning as intended. To resolve this issue, developers need to manually disable these optimizations by setting `NIX_HARDENING_ENABLE = ""` in their environment or Nix configuration, allowing lean-lldb to effectively view Lean4 runtime objects.
 
 Development
 ===========
