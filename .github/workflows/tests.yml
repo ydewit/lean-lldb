@@ -1,0 +1,41 @@
+name: Tests
+on:
+  push:
+    ranches: [ master ]
+  pull_request:
+    branches: [ master ]
+  schedule:
+    # run daily. The exact time does not matter; just try to avoid popular times like midnight
+    - cron: '17 5 * * *'
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  test:
+    strategy:
+      matrix:
+        py_version:
+          - '3.7'
+          - '3.8'
+          - '3.9'
+          - '3.10'
+        lldb_version:
+          - '9'
+          - '10'
+          - '11'
+          - '15'
+          - '16'
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Run the tests
+        env:
+          PY_VERSION: ${{ matrix.py_version }}
+          LLDB_VERSION: ${{ matrix.lldb_version }}
+        run: |
+          make test

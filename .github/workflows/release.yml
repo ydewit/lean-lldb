@@ -1,0 +1,67 @@
+
+name: Build and Release
+
+on:
+  push:
+    branches: [ master ]
+    tags:
+      - "*"
+
+jobs:
+  release:
+
+    runs-on: ubuntu-latest
+
+    environment:
+      name: pypi
+      url: https://pypi.org/p/lean-lldb
+
+    permissions:
+      id-token: write
+      contents: write
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.x'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install poetry
+
+      - id: release_params
+        run: |
+          if [[ "${GITHUB_REF}" == refs/tags/* ]]; then
+            echo "prerelease=false" >> $GITHUB_OUTPUT
+            echo "release_tag=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+            echo "title=${GITHUB_REF#refs/tags/}" >> $GITHUB_OUTPUT
+          else
+            git fetch --tags
+            echo "prerelease=true" >> $GITHUB_OUTPUT
+            echo "release_tag=$(git tag --list --sort=version:refname | grep -v dev | tail -n 1)-dev" >> $GITHUB_OUTPUT
+            echo "title=Development Build" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Build artifacts
+        run: |
+          poetry version ${{ steps.release_params.outputs.release_tag }}
+          poetry build
+
+      - id: create_release
+        uses: "marvinpinto/action-automatic-releases@latest"
+        with:
+          repo_token: ${{ secrets.GITHUB_TOKEN }}
+          prerelease: ${{ steps.release_params.outputs.prerelease }}
+          automatic_release_tag: ${{ steps.release_params.outputs.release_tag }}
+          title: ${{ steps.release_params.outputs.title }}
+          files: |
+            dist/*.whl
+
+      - name: Publish to PyPI (only if it's a final release)
+        if: ${{ !fromJSON(steps.release_params.outputs.prerelease) }}
+        uses: pypa/gh-action-pypi-publish@release/v1
