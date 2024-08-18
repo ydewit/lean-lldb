@@ -15,7 +15,7 @@
             "MIMode": "lldb",
             "logging": {
                 // "natvisDiagnostics": true,
-                "engineLogging": true,
+                //"engineLogging": true,
                 // "trace": true,
                 // "traceResponse": true
             }
