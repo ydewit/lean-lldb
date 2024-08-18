@@ -23,9 +23,9 @@ COPY . /root/.lldb/lean-lldb
 RUN cd /root/.lldb/lean-lldb && \
     poetry version $(git describe --tags --abbrev=0) && \
     poetry install && poetry build -n -f wheel && \
-    mkdir -p ~/.lldb/lean_lldb/site-packages && \
-    python -m pip install --target ~/.lldb/lean_lldb/site-packages dist/*.whl && rm -rf dist && \
-    echo "command script import ~/.lldb/lean_lldb/site-packages/lean_lldb.py" >> /root/.lldbinit && \
+    mkdir -p ~/.lldb/lean-lldb/site-packages && \
+    python -m pip install --target ~/.lldb/lean-lldb/site-packages dist/*.whl && rm -rf dist && \
+    echo "command script import ~/.lldb/lean-lldb/site-packages/lean_lldb.py" >> /root/.lldbinit && \
     chmod +x /root/.lldbinit
 
 CMD ["/usr/bin/lldb"]
